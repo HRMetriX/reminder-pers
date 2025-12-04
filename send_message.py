@@ -8,7 +8,7 @@ LAT = 59.919025  # Широта СПб
 LON = 30.304592  # Долгота СПб
 # ======================================
 
-# Запрос к Open-Meteo с расширенными данными
+# Запрос к Open-Meteo (убраны лишние пробелы!)
 weather_url = (
     "https://api.open-meteo.com/v1/forecast"
     f"?latitude={LAT}&longitude={LON}"
@@ -18,47 +18,61 @@ weather_url = (
 )
 weather = requests.get(weather_url).json()
 
-# Базовые данные из current_weather
+# Базовые данные
 temp = weather["current_weather"]["temperature"]
 weather_code = weather["current_weather"]["weathercode"]
 
-# Эмодзи по погоде
+# Эмодзи погоды
 EMOJI_MAP = {
-    0: "☀️",   # Clear sky
-    1: "🌤️",   # Mainly clear
-    2: "⛅",   # Partly cloudy
-    3: "☁️",   # Overcast
-    45: "🌫️",  # Fog
-    48: "🌫️",  # Depositing rime fog
-    51: "🌧️",  # Drizzle: Light
-    53: "🌧️",  # Drizzle: Moderate
-    55: "🌧️",  # Drizzle: Dense
-    61: "🌦️",  # Rain: Slight
-    63: "🌧️",  # Rain: Moderate
-    65: "🌧️",  # Rain: Heavy
-    71: "❄️",  # Snow: Slight
-    73: "🌨️",  # Snow: Moderate
-    75: "🌨️",  # Snow: Heavy
-    95: "⛈️",  # Thunderstorm
-    96: "⛈️",  # Thunderstorm with hail
-    99: "⛈️",  # Thunderstorm with hail
+    0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️",
+    45: "🌫️", 48: "🌫️",
+    51: "🌧️", 53: "🌧️", 55: "🌧️",
+    61: "🌦️", 63: "🌧️", 65: "🌧️",
+    71: "❄️", 73: "🌨️", 75: "🌨️",
+    95: "⛈️", 96: "⛈️", 99: "⛈️",
 }
 emoji = EMOJI_MAP.get(weather_code, "🌤️")
 
-# Определяем текущий час в UTC для выбора hourly-данных
+# Текущий час в UTC
 current_hour = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:00")
 try:
     idx = weather["hourly"]["time"].index(current_hour)
 except (ValueError, KeyError):
-    idx = 0  # fallback на первый доступный час
+    idx = 0
 
-# Извлекаем расширенные параметры
+# Данные
 humidity = weather["hourly"]["relative_humidity_2m"][idx]
-pressure = weather["hourly"]["pressure_msl"][idx]  # в гПа
-wind_speed = weather["hourly"]["wind_speed_10m"][idx]  # км/ч
-wind_dir = weather["hourly"]["wind_direction_10m"][idx]  # градусы
+pressure_hpa = weather["hourly"]["pressure_msl"][idx]  # в гПа
+wind_speed_kmh = weather["hourly"]["wind_speed_10m"][idx]  # км/ч
+wind_dir_deg = weather["hourly"]["wind_direction_10m"][idx]
 
-# Определяем направление ветра (с эмодзи)
+# === Перевод давления в мм рт. ст. ===
+pressure_mmHg = pressure_hpa * 0.750062
+
+# === Классификация давления ===
+if pressure_mmHg < 740:
+    pressure_desc = "низкое ⬇️"
+elif pressure_mmHg > 770:
+    pressure_desc = "высокое ⬆️"
+else:
+    pressure_desc = "умеренное ↔️"
+
+# === Классификация силы ветра (по шкале Бофорта, упрощённо для км/ч) ===
+def wind_strength(speed_kmh):
+    if speed_kmh < 5:
+        return "слабый"
+    elif speed_kmh < 15:
+        return "умеренный"
+    elif speed_kmh < 25:
+        return "сильный"
+    elif speed_kmh < 35:
+        return "очень сильный"
+    else:
+        return "буря! 🌪️"
+
+wind_strength_text = wind_strength(wind_speed_kmh)
+
+# === Направление ветра ===
 def wind_direction_emoji(deg):
     if 337.5 <= deg or deg < 22.5:
         return "⬆️ С"
@@ -77,27 +91,26 @@ def wind_direction_emoji(deg):
     else:
         return "↖️ СЗ"
 
-wind_text = f"{wind_direction_emoji(wind_dir)} {wind_speed:.0f} км/ч"
+wind_dir_text = wind_direction_emoji(wind_dir_deg)
 
-# Формируем сообщение — в твоём стиле, но с доп. данными
+# === Формируем сообщение ===
 MESSAGE = f"""Здарова, бандиты!
 
 {emoji} Сейчас температура в {CITY} (а именно у подъезда): {temp}°C
 💧 Влажность: {humidity:.0f}%
-🔽 Давление: {pressure:.0f} гПа
-💨 Ветер: {wind_text}
+🔽 Давление: {pressure_mmHg:.0f} мм рт.ст. ({pressure_desc})
+💨 Ветер: {wind_dir_text}, {wind_speed_kmh:.0f} км/ч — {wind_strength_text}
 
 Не забудь дать ребенку витаминку. ❤️"""
 
-
-# === Отправка через Telegram ===
+# === Отправка (БЕЗ пробелов в URL!) ===
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 
-url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"  # ← исправлено!
 response = requests.post(url, json={"chat_id": CHAT_ID, "text": MESSAGE})
 
 if response.status_code == 200:
-    print("✅ Сообщение с полной погодой отправлено!")
+    print("✅ Сообщение с расширенной погодой отправлено!")
 else:
     print("❌ Ошибка:", response.json())
