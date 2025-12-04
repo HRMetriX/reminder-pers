@@ -1,0 +1,25 @@
+name: DReminder
+
+on:
+  schedule:
+    - cron: '0,30 7,8,9 * * *'  # Каждые 30 мин с 07:00 до 09:30 UTC = 10:00–12:30 МСК
+  workflow_dispatch:             # Ручной запуск
+
+jobs:
+  send-love-message:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout код
+        uses: actions/checkout@v4
+
+      - name: Установить Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Отправить сообщение
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: |
+          python send_message.py
